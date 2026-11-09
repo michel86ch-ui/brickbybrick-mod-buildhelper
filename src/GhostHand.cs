@@ -4,6 +4,7 @@ using System.Reflection;
 using HarmonyLib;
 using MultiplayerTemplate.Core.Items;
 using MultiplayerTemplate.Game.Placement;
+using MultiplayerTemplate.Player;
 using MultiplayerTemplate.Player.Carry;
 using UnityEngine;
 
@@ -26,8 +27,10 @@ namespace BuildHelper
             AccessTools.FieldRefAccess<NetworkPlayerPlacementController, IItemRegistry>("itemRegistry");
         private static readonly AccessTools.FieldRef<NetworkPlayerPlacementController, Transform> ViewOf =
             AccessTools.FieldRefAccess<NetworkPlayerPlacementController, Transform>("viewOrigin");
-        private static readonly MethodInfo SetFocusedSlot =
-            AccessTools.Method(typeof(NetworkPlayerPlacementController), "SetFocusedSlot", new[] { typeof(PlacementSlot), typeof(bool) });
+        private static readonly AccessTools.FieldRef<NetworkPlayerPlacementController, NetworkPlayerController> ControllerOf =
+            AccessTools.FieldRefAccess<NetworkPlayerPlacementController, NetworkPlayerController>("playerController");
+        /// <summary>(slot, forRemoval) up to game 1.4; since the November update also (…, throughConstruction).</summary>
+        private static readonly MethodInfo SetFocusedSlot = AccessTools.Method(typeof(NetworkPlayerPlacementController), "SetFocusedSlot");
         private static readonly MethodInfo RequestFocusedIntent = AccessTools.Method(typeof(NetworkPlayerPlacementController), "RequestFocusedIntent");
         private static readonly object PlaceIntent = Enum.ToObject(RequestFocusedIntent.GetParameters()[0].ParameterType, 1);
 
@@ -88,9 +91,11 @@ namespace BuildHelper
                 return;
             }
             Vector3 feet = placement.transform.position;
+            NetworkPlayerController controller = ControllerOf(placement);
+            Vector3 reach = controller != null ? controller.GameplayInteractionOrigin : feet;   // the game measures its reach from here
             if (target != null && Time.unscaledTime <= targetUntil)
             {
-                if (!Fits(targetSite, target, item, feet))
+                if (!Fits(targetSite, target, item, feet, reach))
                 {
                     Clear();
                     Plugin.Toast("Ghost hand: the marked place no longer takes this brick (moved away, or the brick changed).", 4f);
@@ -100,7 +105,7 @@ namespace BuildHelper
                 return;
             }
             Transform view = ViewOf(placement);
-            if (!Find(item, feet, new Ray(view.position, view.forward), out targetSite, out target))
+            if (!Find(item, feet, reach, new Ray(view.position, view.forward), out targetSite, out target))
             {
                 Clear();
                 Plugin.Toast("Ghost hand: no free place for this brick within reach where you look.", 4f);
@@ -117,7 +122,7 @@ namespace BuildHelper
         private static void Place(NetworkPlayerPlacementController placement, Sites.Site site, PlacementSlot place)
         {
             Clear();
-            SetFocusedSlot.Invoke(placement, new object[] { place, false });
+            SetFocusedSlot.Invoke(placement, SetFocusedSlot.GetParameters().Length >= 3 ? new object[] { place, false, true } : new object[] { place, false });
             RequestFocusedIntent.Invoke(placement, new[] { PlaceIntent });
             if (!placement.HasPendingPlacement)
             {
@@ -149,12 +154,12 @@ namespace BuildHelper
         }
 
         /// <summary>The same checks the game makes before placing, minus the line of sight, and only the right brick.</summary>
-        private static bool Fits(Sites.Site site, PlacementSlot place, ItemHandle item, Vector3 feet) =>
-            place != null && place.isActiveAndEnabled && !Sites.IsTaken(site, place) && place.IsWithinUseDistance(feet)
+        private static bool Fits(Sites.Site site, PlacementSlot place, ItemHandle item, Vector3 feet, Vector3 reach) =>
+            place != null && place.isActiveAndEnabled && !Sites.IsTaken(site, place) && place.IsWithinUseDistance(reach)
             && place.IsPlayerInside(feet) && place.IsPlacementAllowed && place.Accepts(item.Definition) && place.IsCorrectPlacement(item);
 
         /// <summary>The fitting place the view ray passes through first, else the one closest to the ray.</summary>
-        private static bool Find(ItemHandle item, Vector3 feet, Ray ray, out Sites.Site site, out PlacementSlot place)
+        private static bool Find(ItemHandle item, Vector3 feet, Vector3 reach, Ray ray, out Sites.Site site, out PlacementSlot place)
         {
             site = null;
             place = null;
@@ -166,7 +171,7 @@ namespace BuildHelper
             {
                 foreach (PlacementSlot p in s.Places)
                 {
-                    if (p == null || !p.IsWithinUseDistance(feet) || !Fits(s, p, item, feet))
+                    if (p == null || !p.IsWithinUseDistance(reach) || !Fits(s, p, item, feet, reach))
                     {
                         continue;
                     }
