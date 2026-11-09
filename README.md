@@ -24,7 +24,7 @@ Two helpers for the last bricks of a building, in every world (the town's buildi
 
 ## Install
 
-1. Download **[buildhelper-mod.zip](https://github.com/michel86ch-ui/brickbybrick-mod-buildhelper/raw/main/buildhelper-mod.zip)**.
+1. Download **[buildhelper-mod.zip](https://github.com/michel86ch-ui/brickbybrick-mod-buildhelper/raw/main/buildhelper-mod.zip)**. Tested with the game update of 9 November 2026.
 2. Unzip everything into the game folder, so that `winhttp.dll` sits next to `BrickByBrick.exe`
    (Steam: right-click the game > Manage > Browse local files). BepInEx already installed (e.g. with
    [Extra Buildings](https://github.com/michel86ch-ui/brickbybrick-mod) or the
